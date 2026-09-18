@@ -18,6 +18,11 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
+variable "public_access_cidrs" {
+  description = "CIDR blocks allowed to access the public EKS API endpoint"
+  type        = list(string)
+}
+
 variable "node_groups" {
   description = "EKS node group configuration"
   type = map(object({

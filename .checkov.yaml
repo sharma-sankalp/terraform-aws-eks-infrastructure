@@ -1,0 +1,15 @@
+framework:
+  - terraform
+
+check:
+  - CKV_AWS_38
+  - CKV_AWS_37
+  - CKV_AWS_58
+  - CKV_AWS_7
+  - CKV_AWS_41
+  - CKV_AWS_100
+  - CKV2_AWS_6
+  - CKV2_AWS_11
+  - CKV2_AWS_12
+  - CKV_AWS_21
+  - CKV_AWS_19

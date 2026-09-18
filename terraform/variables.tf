@@ -40,6 +40,17 @@ variable "cluster_version" {
   default     = "1.30"
 }
 
+variable "public_access_cidrs" {
+  description = "CIDR blocks allowed to access the public EKS API endpoint"
+  type        = list(string)
+  default     = ["198.51.100.1/32"]
+
+  validation {
+    condition     = alltrue([for cidr in var.public_access_cidrs : cidr != "0.0.0.0/0"])
+    error_message = "public_access_cidrs must not include 0.0.0.0/0."
+  }
+}
+
 variable "node_groups" {
   description = "EKS node group configuration"
   type = map(object({

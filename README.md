@@ -1,68 +1,201 @@
-# Ultimate DevOps Project AWS
+# Terraform AWS EKS Infrastructure
 
-This repository contains Terraform configuration for provisioning an Amazon VPC and an Amazon EKS cluster. The infrastructure code is in [`eks-install`](eks-install/).
+This portfolio project provisions an Amazon VPC and an Amazon EKS cluster using Terraform. It demonstrates practical AWS infrastructure, modular Terraform, security scanning, and automated infrastructure delivery with GitHub Actions.
 
-## Terraform Layout
+## Architecture
+
+* VPC across three Availability Zones
+* Public and private subnets
+* Internet Gateway and NAT Gateway routing
+* Amazon EKS cluster with managed node groups
+* EKS control-plane logging
+* Kubernetes Secrets encryption using AWS KMS
+* VPC Flow Logs
+* S3 and DynamoDB for Terraform remote state and locking
+
+## Repository Structure
 
 ```text
-eks-install/
-├── main.tf                 # AWS provider, backend, and root modules
-├── variables.tf            # Root input variables and defaults
-├── outputs.tf              # Cluster, endpoint, and VPC outputs
-├── backend/                # Optional S3 and DynamoDB state infrastructure
-└── modules/
-		├── vpc/                # VPC, subnets, gateways, routes, and NAT
-		└── eks/                # EKS cluster, IAM roles, and node groups
+terraform-aws-eks-infrastructure/
+├── .github/
+│   └── workflows/
+│       ├── plan.yaml
+│       └── apply.yaml
+├── .checkov.yaml
+├── .trivyignore
+├── terraform/
+│   ├── backend/
+│   ├── modules/
+│   │   ├── vpc/
+│   │   └── eks/
+│   ├── main.tf
+│   ├── variables.tf
+│   └── outputs.tf
+└── README.md
 ```
 
-## Prerequisites
+## Security Controls
 
-Install Terraform and the AWS CLI. Configure credentials for the AWS account where the infrastructure will be deployed, and select the intended AWS region. The credentials must be allowed to create VPC, IAM, EKS, S3, and DynamoDB resources.
+* **Checkov** runs a selected Terraform security baseline defined in `.checkov.yaml`.
+* **Trivy** scans Terraform IaC for HIGH and CRITICAL misconfigurations.
+* **Gitleaks** scans the repository for committed secrets.
+* EKS control-plane logging is enabled for all supported control-plane log types.
+* EKS Kubernetes Secrets are encrypted using a dedicated KMS key with key rotation enabled.
+* VPC Flow Logs are sent to CloudWatch Logs.
+* Terraform state uses S3 encryption, versioning, and Public Access Block.
+* The EKS public API endpoint is restricted to a configurable CIDR.
 
-Before deploying, verify the active AWS identity and region:
+The `.trivyignore` file contains four intentional exceptions for the current portfolio architecture:
 
-```bash
-aws sts get-caller-identity
-aws configure get region
+* AWS-managed S3 encryption instead of customer-managed KMS
+* Public EKS API endpoint
+* Restricted public EKS API CIDR
+* Public subnet IP assignment
+
+The Trivy HIGH/CRITICAL threshold remains enabled, so other findings fail CI.
+
+## CI/CD Workflow
+
+### Pull Requests
+
+Pull requests run:
+
+```text
+Checkov
+   ↓
+Trivy IaC
+   ↓
+Gitleaks
+   ↓
+Terraform fmt
+   ↓
+Terraform init
+   ↓
+Terraform validate
+   ↓
+Terraform plan
 ```
 
-## Optional Remote Backend
+The PR plan is used for review only and is not uploaded or applied automatically.
 
-The backend stack creates:
+### Push to main
 
-- An S3 bucket for Terraform state
-- A DynamoDB table for state locking
+Changes pushed to `main` run:
 
-Create these resources first, from `eks-install/backend`:
-
-```bash
-terraform init
-terraform plan
-terraform apply
+```text
+Checkov
+   ↓
+Trivy IaC
+   ↓
+Gitleaks
+   ↓
+Terraform fmt
+   ↓
+Terraform init
+   ↓
+Terraform validate
+   ↓
+Terraform plan
+   ↓
+Upload plan artifact
+   ↓
+Apply job
+   ↓
+Download exact plan
+   ↓
+Terraform apply
 ```
 
-Before initializing the main stack, update the S3 bucket name in [`eks-install/main.tf`](eks-install/main.tf) so it matches the bucket created by the backend stack. The configured DynamoDB table name must also match. Never commit Terraform state files or credentials.
+The `apply` job applies the exact Terraform plan artifact created by the preceding `plan` job in the same workflow run.
 
-## Deploy the Main Stack
+AWS authentication currently uses the following GitHub repository secrets:
 
-From `eks-install`:
-
-```bash
-terraform init
-terraform plan
-terraform apply
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_REGION
 ```
 
-The default configuration uses region `us-west-2`, three availability zones, a `10.0.0.0/16` VPC, and one EKS node group. Override values with a `terraform.tfvars` file or `-var` arguments. Useful outputs are available after deployment:
+## Remote State Setup
+
+The backend configuration creates the S3 bucket and DynamoDB table used for Terraform remote state and state locking.
+
+Bootstrap the backend from the repository root:
 
 ```bash
-terraform output cluster_name
-terraform output cluster_endpoint
-terraform output vpc_id
+terraform -chdir=terraform/backend init
+terraform -chdir=terraform/backend plan
+terraform -chdir=terraform/backend apply
 ```
 
-Destroying the stack removes the AWS resources managed by Terraform:
+Ensure the S3 bucket and DynamoDB table configured for the main Terraform stack match the resources created by the backend configuration.
+
+Never commit Terraform state files or credentials.
+
+## Deployment
+
+From the repository root:
 
 ```bash
-terraform destroy
+terraform -chdir=terraform init
+terraform -chdir=terraform plan
+terraform -chdir=terraform apply
+```
+
+View Terraform outputs:
+
+```bash
+terraform -chdir=terraform output
+```
+
+## Manual Testing
+
+### Terraform
+
+```bash
+terraform -chdir=terraform fmt -check -recursive
+terraform -chdir=terraform init
+terraform -chdir=terraform validate
+terraform -chdir=terraform plan
+```
+
+### Checkov
+
+```bash
+checkov -d terraform --config-file .checkov.yaml
+```
+
+### Trivy IaC
+
+```bash
+docker run --rm \
+  -v "$PWD":/workspace:ro \
+  -w /workspace \
+  aquasec/trivy:0.58.1 \
+  config \
+  --severity HIGH,CRITICAL \
+  --exit-code 1 \
+  terraform
+```
+
+### Gitleaks
+
+```bash
+docker run --rm \
+  -v "$PWD":/repo:ro \
+  -w /repo \
+  zricethezav/gitleaks:v8.21.2 \
+  detect \
+  --source . \
+  --no-banner \
+  --redact \
+  --exit-code 1
+```
+
+## Destroy
+
+Destroy the infrastructure when it is no longer required:
+
+```bash
+terraform -chdir=terraform destroy
 ```

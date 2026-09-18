@@ -1,0 +1,11 @@
+# Intentional for this portfolio project: the backend uses AWS-managed S3 encryption.
+AVD-AWS-0132
+
+# Intentional for this portfolio project: public EKS API access is required for administration.
+AVD-AWS-0040
+
+# Intentional for this portfolio project: EKS public API access is restricted by a configurable CIDR.
+AVD-AWS-0041
+
+# Intentional for this portfolio project: public subnets support the configured NAT gateways and load balancers.
+AVD-AWS-0164
